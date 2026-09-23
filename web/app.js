@@ -175,3 +175,42 @@ bundleForm.addEventListener('submit', async event => {
     }
   } catch (e) { bundleSummary.textContent = e.message; }
 });
+
+const aiQuery = document.querySelector('#ai-query');
+const aiTextSubmit = document.querySelector('#ai-text-submit');
+const aiVoiceSubmit = document.querySelector('#ai-voice-submit');
+const aiStatus = document.querySelector('#ai-status');
+const aiUnderstood = document.querySelector('#ai-understood');
+let recorder;
+let recording = [];
+
+function showAIStatus(message, isError = false) { aiStatus.hidden = false; aiStatus.textContent = message; aiStatus.className = isError ? 'ai-error' : ''; }
+function renderUnderstood(parsed, transcript = '') {
+  const fields = [['Режим', parsed.mode === 'bundle' ? 'Собрать мероприятие' : 'Найти подрядчика'], ['Город', parsed.city], ['Дата', parsed.date], ['Формат', parsed.eventFormat], ['Категория', parsed.category || (parsed.categories || []).join(', ')], ['Бюджет', parsed.budgetKzt ? money(parsed.budgetKzt)+' ₸' : parsed.totalBudgetKzt ? money(parsed.totalBudgetKzt)+' ₸' : ''], ['Пожелания', parsed.preferences]];
+  aiUnderstood.hidden = false; aiUnderstood.replaceChildren(el('strong','',transcript ? `Распознано: «${transcript}»` : 'Мы поняли ваш запрос'), ...fields.filter(([,value]) => value).map(([label,value]) => el('span','',`${label}: ${value}`)));
+}
+function applyParsed(parsed) {
+  const missing = parsed.missing || [];
+  renderUnderstood(parsed);
+  if (missing.length) { showAIStatus(`Нужно уточнить: ${missing.join(', ')}. Ручная форма остаётся доступной.`); return; }
+  const bundle = parsed.mode === 'bundle';
+  document.querySelector(`.mode[data-mode="${bundle ? 'bundle' : 'single'}"]`).click();
+  if (!bundle) {
+    if (parsed.city) form.elements.city.value = parsed.city; if (parsed.date) form.elements.date.value = parsed.date; if (parsed.eventFormat) form.elements.format.value = parsed.eventFormat; if (parsed.category) form.elements.category.value = parsed.category; if (parsed.budgetKzt) form.elements.budget.value = parsed.budgetKzt; if (parsed.language) form.elements.language.value = parsed.language; if (parsed.durationHours) form.elements.hours.value = parsed.durationHours; if (parsed.preferences) form.elements.wish.value = parsed.preferences; form.requestSubmit();
+  } else {
+    if (parsed.city) document.querySelector('#bundle-city').value = parsed.city; if (parsed.date) bundleForm.elements.date.value = parsed.date; if (parsed.eventFormat) document.querySelector('#bundle-format').value = parsed.eventFormat; if (parsed.totalBudgetKzt) bundleForm.elements.budget.value = parsed.totalBudgetKzt; if (parsed.language) document.querySelector('#bundle-language').value = parsed.language;
+    const wanted = parsed.categories || []; bundleForm.querySelectorAll('input[name="category"]').forEach(input => { input.checked = wanted.includes(input.value); }); renderBundleDurations();
+    bundleForm.querySelectorAll('input[data-duration-category]').forEach(input => { if (parsed.categoryDurations && parsed.categoryDurations[input.dataset.durationCategory]) input.value = parsed.categoryDurations[input.dataset.durationCategory]; }); bundleForm.requestSubmit();
+  }
+  showAIStatus('Параметры распознаны и переданы в deterministic-подбор.');
+}
+async function parseText(text, transcript = '') {
+  showAIStatus('Обрабатываем запрос…'); aiTextSubmit.disabled = true; aiVoiceSubmit.disabled = true;
+  try { const response = await fetch('/api/ai/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}); const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Не удалось обработать запрос.'); renderUnderstood(result.parsed, transcript); applyParsed(result.parsed); } catch (error) { showAIStatus(error.message, true); } finally { aiTextSubmit.disabled = false; aiVoiceSubmit.disabled = false; }
+}
+aiTextSubmit.addEventListener('click', () => { if (aiQuery.value.trim()) parseText(aiQuery.value.trim()); else showAIStatus('Введите текстовый запрос.', true); });
+aiVoiceSubmit.addEventListener('click', async () => {
+  if (recorder && recorder.state === 'recording') { recorder.stop(); aiVoiceSubmit.textContent = '🎙 Записать голос'; return; }
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { showAIStatus('Голосовой ввод не поддерживается. Используйте текстовый поиск.', true); return; }
+  try { const stream = await navigator.mediaDevices.getUserMedia({audio:true}); recording = []; recorder = new MediaRecorder(stream); recorder.ondataavailable = event => { if (event.data.size) recording.push(event.data); }; recorder.onstop = async () => { stream.getTracks().forEach(track => track.stop()); const blob = new Blob(recording,{type:recorder.mimeType || 'audio/webm'}); const formData = new FormData(); formData.append('audio',blob,'voice.webm'); showAIStatus('Распознаём голос…'); try { const response = await fetch('/api/ai/voice',{method:'POST',body:formData}); const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Не удалось распознать голосовой запрос.'); renderUnderstood(result.parsed,result.transcript); applyParsed(result.parsed); } catch (error) { showAIStatus(error.message, true); } }; recorder.start(); aiVoiceSubmit.textContent = '⏹ Остановить запись'; showAIStatus('Идёт запись…'); } catch { showAIStatus('Доступ к микрофону запрещён. Используйте текстовый поиск.', true); }
+});

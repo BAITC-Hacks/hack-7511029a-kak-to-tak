@@ -6,6 +6,16 @@ textarea {
 }
 
 [hidden] { display: none !important; }
+.ai-search { display:grid; grid-template-columns:1fr 1.3fr; gap:18px; align-items:center; border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:24px; background:#fffdf6; }
+.ai-search h2 { margin-bottom:5px; }
+.ai-search p { color:var(--muted); font-size:12px; line-height:1.5; margin:0; }
+.ai-controls textarea { width:100%; border:1px solid var(--line); border-radius:8px; padding:9px; resize:vertical; }
+.ai-controls button { margin:8px 6px 0 0; border:1px solid var(--line); border-radius:18px; padding:8px 12px; color:var(--green); background:#f2f4eb; font-size:12px; }
+#ai-status, #ai-understood { grid-column:1/-1; font-size:12px; line-height:1.6; padding:10px 12px; border-radius:8px; background:#f0f2e7; }
+#ai-status.ai-error { background:#ffebe5; color:#923c24; }
+#ai-understood { display:flex; flex-wrap:wrap; gap:6px; }
+#ai-understood strong { width:100%; }
+#ai-understood span { background:#fff; border:1px solid var(--line); border-radius:14px; padding:5px 8px; }
 
 .mode-switch { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 28px; color:var(--muted); font-size:12px; }
 .mode-switch span { margin-right:5px; font-weight:600; color:var(--ink); }
@@ -65,3 +75,5 @@ textarea:focus {
   font-size: 12px;
   padding: 8px 10px;
 }
+
+@media (max-width: 650px) { .ai-search { grid-template-columns: 1fr; } }
