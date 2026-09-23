@@ -154,7 +154,8 @@ func nearestAvailableDate(c Contractor, selected string) string {
 type BundleQuery struct {
 	City, Date, Format, Language string
 	Categories                   []string
-	Budget, Hours                int
+	Budget                       int
+	Durations                    map[string]int
 }
 
 type BundleItem struct {
@@ -379,7 +380,7 @@ type bundleCandidate struct {
 }
 
 func validateBundleQuery(q BundleQuery) error {
-	if q.City == "" || q.Format == "" || q.Budget <= 0 || q.Hours < 0 || len(q.Categories) == 0 {
+	if q.City == "" || q.Format == "" || q.Budget <= 0 || len(q.Categories) == 0 {
 		return fmt.Errorf("город, формат, категории и положительный общий бюджет обязательны")
 	}
 	if _, err := time.Parse("2006-01-02", q.Date); err != nil || q.Date < "2026-09-23" || q.Date > "2026-12-31" {
@@ -389,6 +390,9 @@ func validateBundleQuery(q BundleQuery) error {
 	for _, category := range q.Categories {
 		if strings.TrimSpace(category) == "" || seen[category] {
 			return fmt.Errorf("категории должны быть непустыми и уникальными")
+		}
+		if duration := q.Durations[category]; duration < 0 {
+			return fmt.Errorf("длительность для категории %s не может быть отрицательной", category)
 		}
 		seen[category] = true
 	}
@@ -405,7 +409,8 @@ func bundleCandidates(catalog []Contractor, q BundleQuery, date string) map[stri
 			if q.Language != "" && !contains(c.Languages, q.Language) {
 				continue
 			}
-			if q.Hours > 0 && c.MaxHours != nil && q.Hours > *c.MaxHours {
+			duration := q.Durations[category]
+			if duration > 0 && c.MaxHours != nil && duration > *c.MaxHours {
 				continue
 			}
 			evidence, relevance := matchedEvidence(c.Description, "")

@@ -31,6 +31,7 @@ async function init() {
     form.elements.city.value = 'Алматы'; form.elements.category.value = 'Ведущий'; form.elements.format.value = 'корпоратив';
     document.querySelector('#bundle-city').value = 'Алматы'; document.querySelector('#bundle-format').value = 'свадьба';
     document.querySelectorAll('#bundle-categories input').forEach(input => { input.checked = ['Ведущий','Фотограф','Танцевальный коллектив'].includes(input.value); });
+    renderBundleDurations();
     ready = true; submit.disabled = false;
   } catch (e) { error.hidden = false; error.textContent = e.message; }
 }
@@ -119,6 +120,23 @@ const bundleResults = document.querySelector('#bundle-results');
 const bundleSummary = document.querySelector('#bundle-summary');
 const bundleCards = document.querySelector('#bundle-cards');
 const bundleAlternatives = document.querySelector('#bundle-alternatives');
+const bundleDurationBlock = document.querySelector('#bundle-durations');
+const bundleDurationFields = document.querySelector('#bundle-duration-fields');
+
+function renderBundleDurations() {
+  const selected = [...bundleForm.querySelectorAll('input[name="category"]:checked')].map(input => input.value);
+  const previous = Object.fromEntries([...bundleDurationFields.querySelectorAll('input[data-duration-category]')].map(input => [input.dataset.durationCategory, input.value]));
+  bundleDurationFields.replaceChildren(...selected.map(category => {
+    const label = el('label','duration-choice');
+    label.append(el('span','',category));
+    const input = document.createElement('input'); input.type = 'number'; input.min = '0'; input.step = '1'; input.value = previous[category] || '8'; input.dataset.durationCategory = category; input.setAttribute('aria-label', `Часов: ${category}`);
+    label.append(input, document.createTextNode(' часов')); return label;
+  }));
+  bundleDurationBlock.hidden = selected.length === 0;
+}
+
+document.querySelector('#bundle-categories').addEventListener('change', renderBundleDurations);
+renderBundleDurations();
 
 document.querySelectorAll('.mode').forEach(button => button.addEventListener('click', () => {
   const bundle = button.dataset.mode === 'bundle';
@@ -142,8 +160,9 @@ bundleForm.addEventListener('submit', async event => {
   event.preventDefault();
   const categories = [...bundleForm.querySelectorAll('input[name="category"]:checked')].map(input => input.value);
   if (!categories.length) { bundleSummary.textContent = 'Выберите хотя бы одну категорию.'; return; }
-  const query = Object.fromEntries(new FormData(bundleForm)); delete query.category;
+  const query = Object.fromEntries(new FormData(bundleForm)); delete query.category; delete query.hours;
   const params = new URLSearchParams(query); categories.forEach(category => params.append('category', category));
+  bundleForm.querySelectorAll('input[data-duration-category]').forEach(input => params.append('duration', `${input.dataset.durationCategory}|${input.value}`));
   bundleSummary.textContent = 'Собираем комплект из реальных профилей…'; bundleCards.replaceChildren(); bundleAlternatives.replaceChildren();
   try {
     const response = await fetch('/api/bundle?'+params); const result = await response.json();

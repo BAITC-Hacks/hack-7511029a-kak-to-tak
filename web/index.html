@@ -22,8 +22,9 @@
 <div class="pair"><label>Город<select id="bundle-city" name="city" required></select></label><label>Дата<input name="date" type="date" min="2026-09-23" max="2026-12-31" value="2026-10-15" required></label></div>
 <label>Формат мероприятия<select id="bundle-format" name="format" required></select></label>
 <fieldset><legend>Категории подрядчиков</legend><div id="bundle-categories" class="category-list"></div><span class="field-note">Выберите одну или несколько категорий. Максимум один подрядчик каждого типа.</span></fieldset>
+<div id="bundle-durations" class="duration-block" hidden><h3>Сколько часов нужен каждый подрядчик</h3><div id="bundle-duration-fields"></div></div>
 <label>Общий бюджет, ₸<input name="budget" type="number" min="1" step="1" value="2000000" required></label>
-<div class="pair"><label>Язык<select id="bundle-language" name="language"><option value="">Любой</option></select></label><label>Часов на площадке<input name="hours" type="number" min="1" step="1" placeholder="Не важно"></label></div>
+<label>Язык<select id="bundle-language" name="language"><option value="">Любой</option></select></label>
 <button class="primary" type="submit">Собрать мероприятие <span>↗</span></button>
 <p class="hint">Общий бюджет распределяется по реальным ценам каталога, без деления поровну.</p>
 </form>

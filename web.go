@@ -85,15 +85,6 @@ func webHandler(catalog []Contractor) http.Handler {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Введите общий бюджет целым числом."})
 			return
 		}
-		hours := 0
-		if v.Get("hours") != "" {
-			hours, err = strconv.Atoi(v.Get("hours"))
-			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]string{"error": "Введите длительность целым числом часов."})
-				return
-			}
-		}
 		categories := v["category"]
 		if len(categories) == 1 {
 			categories = strings.Split(categories[0], ",")
@@ -101,7 +92,23 @@ func webHandler(catalog []Contractor) http.Handler {
 		for i := range categories {
 			categories[i] = strings.TrimSpace(categories[i])
 		}
-		result, err := recommendBundle(catalog, BundleQuery{City: v.Get("city"), Date: v.Get("date"), Format: v.Get("format"), Language: v.Get("language"), Categories: categories, Budget: budget, Hours: hours})
+		durations := map[string]int{}
+		for _, raw := range v["duration"] {
+			parts := strings.SplitN(raw, "|", 2)
+			if len(parts) != 2 {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Укажите часы для каждой выбранной категории."})
+				return
+			}
+			hours, parseErr := strconv.Atoi(parts[1])
+			if parseErr != nil || hours < 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Часы для категории должны быть неотрицательным числом."})
+				return
+			}
+			durations[strings.TrimSpace(parts[0])] = hours
+		}
+		result, err := recommendBundle(catalog, BundleQuery{City: v.Get("city"), Date: v.Get("date"), Format: v.Get("format"), Language: v.Get("language"), Categories: categories, Budget: budget, Durations: durations})
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

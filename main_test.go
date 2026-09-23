@@ -83,25 +83,50 @@ func TestWishRanksAndOffersAlternatives(t *testing.T) {
 }
 
 func TestBundleMatchingIsDeterministicAndWithinBudget(t *testing.T) {
-	q := BundleQuery{City: "Алматы", Date: "2026-10-15", Format: "свадьба", Categories: []string{"Ведущий", "Фотограф", "Танцевальный коллектив"}, Budget: 1000000}
-	makeC := func(id, category string, price int) Contractor { return Contractor{ID: id, Name: id, City: q.City, Categories: []string{category}, Formats: []string{q.Format}, Price: price} }
+	q := BundleQuery{City: "Алматы", Date: "2026-10-15", Format: "свадьба", Categories: []string{"Ведущий", "Фотограф", "Танцевальный коллектив"}, Budget: 1000000, Durations: map[string]int{"Ведущий": 8, "Фотограф": 5, "Танцевальный коллектив": 2}}
+	makeC := func(id, category string, price int) Contractor {
+		return Contractor{ID: id, Name: id, City: q.City, Categories: []string{category}, Formats: []string{q.Format}, Price: price}
+	}
 	catalog := []Contractor{makeC("host", "Ведущий", 300000), makeC("photo", "Фотограф", 300000), makeC("dance", "Танцевальный коллектив", 300000)}
 	one, err := recommendBundle(catalog, q)
 	if err != nil || one.Status != "complete" || len(one.Items) != 3 || one.Total != 900000 {
 		t.Fatalf("unexpected bundle: %+v, %v", one, err)
 	}
 	two, _ := recommendBundle(catalog, q)
-	if one.Items[0].Contractor.ID != two.Items[0].Contractor.ID || one.Total != two.Total { t.Fatal("bundle ordering is not deterministic") }
+	if one.Items[0].Contractor.ID != two.Items[0].Contractor.ID || one.Total != two.Total {
+		t.Fatal("bundle ordering is not deterministic")
+	}
+}
+
+func TestBundleUsesDurationPerCategoryAndAllowsUnlimited(t *testing.T) {
+	q := BundleQuery{City: "Алматы", Date: "2026-10-15", Format: "свадьба", Categories: []string{"Отель", "Ведущий"}, Budget: 1000000, Durations: map[string]int{"Отель": 12, "Ведущий": 8}}
+	hotel := Contractor{ID: "hotel", Name: "Hotel", City: q.City, Categories: []string{"Отель"}, Formats: []string{q.Format}, Price: 400000}
+	hotelHours := 10
+	hotel.MaxHours = &hotelHours
+	host := Contractor{ID: "host", Name: "Host", City: q.City, Categories: []string{"Ведущий"}, Formats: []string{q.Format}, Price: 300000}
+	short := 6
+	host.MaxHours = &short
+	unlimited := Contractor{ID: "unlimited", Name: "Unlimited", City: q.City, Categories: []string{"Отель"}, Formats: []string{q.Format}, Price: 450000}
+	r, err := recommendBundle([]Contractor{hotel, host, unlimited}, q)
+	if err != nil || len(r.Items) != 1 || r.Items[0].Contractor.ID != "unlimited" {
+		t.Fatalf("duration filtering failed: %+v, %v", r, err)
+	}
 }
 
 func TestBundleBudgetAlternativeLimit(t *testing.T) {
-	q := BundleQuery{City: "Алматы", Date: "2026-10-15", Format: "свадьба", Categories: []string{"Ведущий", "Фотограф"}, Budget: 500000}
+	q := BundleQuery{City: "Алматы", Date: "2026-10-15", Format: "свадьба", Categories: []string{"Ведущий", "Фотограф"}, Budget: 500000, Durations: map[string]int{"Ведущий": 8, "Фотограф": 5}}
 	base := Contractor{City: q.City, Formats: []string{q.Format}}
-	host := base; host.ID, host.Name, host.Categories, host.Price = "host", "Host", []string{"Ведущий"}, 250000
-	photo := base; photo.ID, photo.Name, photo.Categories, photo.Price = "photo", "Photo", []string{"Фотограф"}, 320000
+	host := base
+	host.ID, host.Name, host.Categories, host.Price = "host", "Host", []string{"Ведущий"}, 250000
+	photo := base
+	photo.ID, photo.Name, photo.Categories, photo.Price = "photo", "Photo", []string{"Фотограф"}, 320000
 	r, err := recommendBundle([]Contractor{host, photo}, q)
-	if err != nil || len(r.Alternatives) != 1 || r.Alternatives[0].Difference != 70000 { t.Fatalf("expected +70k alternative: %+v, %v", r, err) }
+	if err != nil || len(r.Alternatives) != 1 || r.Alternatives[0].Difference != 70000 {
+		t.Fatalf("expected +70k alternative: %+v, %v", r, err)
+	}
 	photo.Price = 650000
 	r, _ = recommendBundle([]Contractor{host, photo}, q)
-	if len(r.Alternatives) != 0 { t.Fatalf("+150k must not be offered: %+v", r.Alternatives) }
+	if len(r.Alternatives) != 0 {
+		t.Fatalf("+150k must not be offered: %+v", r.Alternatives)
+	}
 }

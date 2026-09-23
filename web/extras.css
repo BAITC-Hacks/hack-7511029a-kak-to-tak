@@ -16,6 +16,11 @@ legend { font-size:12px; font-weight:600; padding:0 5px; }
 .category-list { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .category-choice { flex-direction:row; align-items:center; gap:7px; margin:0; font-size:11px; font-weight:400; }
 .category-choice input { width:auto; height:auto; }
+.duration-block { border:1px solid var(--line); border-radius:9px; padding:12px; margin:-5px 0 18px; background:#fbfbf8; }
+.duration-block h3 { font-size:12px; margin:0 0 10px; }
+.duration-choice { display:grid; grid-template-columns:1fr 72px auto; align-items:center; gap:7px; margin:0 0 8px; font-size:11px; font-weight:400; }
+.duration-choice:last-child { margin-bottom:0; }
+.duration-choice input { height:34px; padding:0 7px; }
 #bundle-results { margin-top:22px; }
 #bundle-summary { border:1px solid var(--line); border-radius:10px; padding:14px; font-size:13px; line-height:1.6; margin-bottom:15px; }
 #bundle-alternatives { margin-top:22px; }
