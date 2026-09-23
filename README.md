@@ -37,6 +37,10 @@ OpenAI используется только для распознавания �
 
 Нужен Go 1.22 или новее. Выполнять из корня репозитория:
 
+В Windows PowerShell запустите `powershell -NoProfile -ExecutionPolicy Bypass -File ./start.ps1`: скрипт загрузит настройки из `.env.local`.
+Для AI-поиска серверу нужен доступ к `https://api.openai.com`.
+При запуске напрямую через Go переменные `OPENAI_*` должны быть заданы в окружении:
+
 ```sh
 go run .
 ```

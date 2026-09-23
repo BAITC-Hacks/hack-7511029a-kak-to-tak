@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -154,8 +155,15 @@ func callOpenAIParser(ctx context.Context, catalog []Contractor, text string, pr
 	schema := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 		"mode": map[string]any{"type": "string", "enum": []string{"single", "bundle"}}, "city": map[string]any{"type": "string"}, "date": map[string]any{"type": "string"}, "eventFormat": map[string]any{"type": "string"}, "category": map[string]any{"type": "string"}, "categories": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "budgetKzt": map[string]any{"type": "integer"}, "totalBudgetKzt": map[string]any{"type": "integer"}, "language": map[string]any{"type": "string"}, "durationHours": map[string]any{"type": "integer"}, "categoryDurations": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "integer"}}, "preferences": map[string]any{"type": "string"}, "missing": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 	}, "required": []string{"mode", "city", "date", "eventFormat", "category", "categories", "budgetKzt", "totalBudgetKzt", "language", "durationHours", "categoryDurations", "preferences", "missing"}}
+	durations := map[string]any{}
+	for _, category := range enums["category"] {
+		durations[category] = map[string]any{"type": "integer", "minimum": 0, "description": "Часы для этой категории; 0, если длительность не указана."}
+	}
+	schema["properties"].(map[string]any)["categoryDurations"] = map[string]any{
+		"type": "object", "properties": durations, "required": enums["category"], "additionalProperties": false,
+	}
 	prompt := fmt.Sprintf("Преобразуй запрос пользователя в JSON. Не придумывай значения вне справочников. Дата YYYY-MM-DD, деньги в KZT. Для неполных запросов заполни missing и сохрани известные поля. Справочники: %s\nКонтекст: %s\nЗапрос: %s", mustJSON(enums), string(previous), text)
-	payload := map[string]any{"model": aiModel(), "input": prompt, "temperature": 0, "text": map[string]any{"format": map[string]any{"type": "json_schema", "name": "search_request", "strict": true, "schema": schema}}}
+	payload := map[string]any{"model": aiModel(), "input": prompt, "text": map[string]any{"format": map[string]any{"type": "json_schema", "name": "search_request", "strict": true, "schema": schema}}}
 	data, _ := json.Marshal(payload)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/responses", bytes.NewReader(data))
 	req.Header.Set("Authorization", "Bearer "+key)
@@ -163,11 +171,11 @@ func callOpenAIParser(ctx context.Context, catalog []Contractor, text string, pr
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return ParsedRequest{}, fmt.Errorf("не удалось обработать запрос автоматически")
+		return ParsedRequest{}, fmt.Errorf("не удалось подключиться к OpenAI; проверьте доступ сервера к интернету")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return ParsedRequest{}, fmt.Errorf("не удалось обработать запрос автоматически")
+		return ParsedRequest{}, openAIResponseError(resp, key)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	parsed, err := parseAIResponse(body)
@@ -181,6 +189,12 @@ func callOpenAIParser(ctx context.Context, catalog []Contractor, text string, pr
 }
 
 func mustJSON(value any) string { data, _ := json.Marshal(value); return string(data) }
+
+func openAIResponseError(resp *http.Response, key string) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	log.Printf("OpenAI HTTP %d: %s", resp.StatusCode, strings.ReplaceAll(string(body), key, "[REDACTED]"))
+	return fmt.Errorf("OpenAI отклонил запрос (HTTP %d); подробности в журнале сервера", resp.StatusCode)
+}
 
 func transcribeAudio(ctx context.Context, file multipart.File, header *multipart.FileHeader) (string, error) {
 	key := os.Getenv("OPENAI_API_KEY")
@@ -203,11 +217,11 @@ func transcribeAudio(ctx context.Context, file multipart.File, header *multipart
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(req)
 	if err != nil {
-		return "", fmt.Errorf("не удалось распознать голосовой запрос")
+		return "", fmt.Errorf("не удалось подключиться к OpenAI для распознавания; проверьте доступ сервера к интернету")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("не удалось распознать голосовой запрос")
+		return "", openAIResponseError(resp, key)
 	}
 	var result struct {
 		Text string `json:"text"`
