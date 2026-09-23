@@ -81,3 +81,27 @@ func TestWishRanksAndOffersAlternatives(t *testing.T) {
 		t.Fatalf("alternatives: %+v", r.Alternatives)
 	}
 }
+
+func TestBundleMatchingIsDeterministicAndWithinBudget(t *testing.T) {
+	q := BundleQuery{City: "Алматы", Date: "2026-10-15", Format: "свадьба", Categories: []string{"Ведущий", "Фотограф", "Танцевальный коллектив"}, Budget: 1000000}
+	makeC := func(id, category string, price int) Contractor { return Contractor{ID: id, Name: id, City: q.City, Categories: []string{category}, Formats: []string{q.Format}, Price: price} }
+	catalog := []Contractor{makeC("host", "Ведущий", 300000), makeC("photo", "Фотограф", 300000), makeC("dance", "Танцевальный коллектив", 300000)}
+	one, err := recommendBundle(catalog, q)
+	if err != nil || one.Status != "complete" || len(one.Items) != 3 || one.Total != 900000 {
+		t.Fatalf("unexpected bundle: %+v, %v", one, err)
+	}
+	two, _ := recommendBundle(catalog, q)
+	if one.Items[0].Contractor.ID != two.Items[0].Contractor.ID || one.Total != two.Total { t.Fatal("bundle ordering is not deterministic") }
+}
+
+func TestBundleBudgetAlternativeLimit(t *testing.T) {
+	q := BundleQuery{City: "Алматы", Date: "2026-10-15", Format: "свадьба", Categories: []string{"Ведущий", "Фотограф"}, Budget: 500000}
+	base := Contractor{City: q.City, Formats: []string{q.Format}}
+	host := base; host.ID, host.Name, host.Categories, host.Price = "host", "Host", []string{"Ведущий"}, 250000
+	photo := base; photo.ID, photo.Name, photo.Categories, photo.Price = "photo", "Photo", []string{"Фотограф"}, 320000
+	r, err := recommendBundle([]Contractor{host, photo}, q)
+	if err != nil || len(r.Alternatives) != 1 || r.Alternatives[0].Difference != 70000 { t.Fatalf("expected +70k alternative: %+v, %v", r, err) }
+	photo.Price = 650000
+	r, _ = recommendBundle([]Contractor{host, photo}, q)
+	if len(r.Alternatives) != 0 { t.Fatalf("+150k must not be offered: %+v", r.Alternatives) }
+}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -65,6 +66,44 @@ func webHandler(catalog []Contractor) http.Handler {
 		result, err := recommend(catalog, Query{City: v.Get("city"), Category: v.Get("category"), Date: v.Get("date"), Format: v.Get("format"), Language: v.Get("language"), Wish: v.Get("wish"), Budget: budget, Hours: hours})
 		if err != nil {
 			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(result)
+	})
+	mux.HandleFunc("/api/bundle", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Используйте GET"})
+			return
+		}
+		v := r.URL.Query()
+		budget, err := strconv.Atoi(v.Get("budget"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Введите общий бюджет целым числом."})
+			return
+		}
+		hours := 0
+		if v.Get("hours") != "" {
+			hours, err = strconv.Atoi(v.Get("hours"))
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Введите длительность целым числом часов."})
+				return
+			}
+		}
+		categories := v["category"]
+		if len(categories) == 1 {
+			categories = strings.Split(categories[0], ",")
+		}
+		for i := range categories {
+			categories[i] = strings.TrimSpace(categories[i])
+		}
+		result, err := recommendBundle(catalog, BundleQuery{City: v.Get("city"), Date: v.Get("date"), Format: v.Get("format"), Language: v.Get("language"), Categories: categories, Budget: budget, Hours: hours})
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}

@@ -5,6 +5,7 @@
 <header><a class="brand" href="/">по делу<span>✳</span></a><span class="header-note">Kak to tak · HackAlem 2026</span><span class="edition">Подбор для событий</span></header>
 <main>
 <section class="intro"><div class="eyebrow">МЕНЬШЕ ПОИСКА. БОЛЬШЕ ПРАЗДНИКА.</div><h1>Ваше событие.<br><span>Подходящие люди.</span></h1><p>Расскажите о мероприятии — выберем до трёх подрядчиков<br class="desktop"> и покажем, почему они подходят под ваши условия.</p></section>
+<div class="mode-switch" role="group" aria-label="Что вы хотите сделать?"><span>Что вы хотите сделать?</span><button type="button" class="mode active" data-mode="single">Найти подрядчика</button><button type="button" class="mode" data-mode="bundle">Собрать мероприятие</button></div>
 <div class="layout">
 <aside class="panel"><div class="section-label"><span class="step">01</span><h2>Что планируете?</h2></div>
 <form id="search">
@@ -17,6 +18,15 @@
 <button id="submit" class="primary" type="submit" disabled>Подобрать подрядчиков <span>↗</span></button>
 <p class="hint">Даты каталога: 23 сентября — 31 декабря 2026.<br>Указанные цены — начальные, итог уточняется.</p>
 </form>
+<form id="bundle-search" hidden>
+<div class="pair"><label>Город<select id="bundle-city" name="city" required></select></label><label>Дата<input name="date" type="date" min="2026-09-23" max="2026-12-31" value="2026-10-15" required></label></div>
+<label>Формат мероприятия<select id="bundle-format" name="format" required></select></label>
+<fieldset><legend>Категории подрядчиков</legend><div id="bundle-categories" class="category-list"></div><span class="field-note">Выберите одну или несколько категорий. Максимум один подрядчик каждого типа.</span></fieldset>
+<label>Общий бюджет, ₸<input name="budget" type="number" min="1" step="1" value="2000000" required></label>
+<div class="pair"><label>Язык<select id="bundle-language" name="language"><option value="">Любой</option></select></label><label>Часов на площадке<input name="hours" type="number" min="1" step="1" placeholder="Не важно"></label></div>
+<button class="primary" type="submit">Собрать мероприятие <span>↗</span></button>
+<p class="hint">Общий бюджет распределяется по реальным ценам каталога, без деления поровну.</p>
+</form>
 </aside>
 <section class="results" aria-labelledby="result-title"><div class="results-top"><div class="section-label"><span class="step">02</span><h2 id="result-title">Ваш короткий список</h2></div><span id="count" class="count">До 3 вариантов</span></div>
 <p id="summary" role="status" aria-live="polite">Заполните условия слева или попробуйте пример ниже.</p>
@@ -25,6 +35,7 @@
 <div id="cards"><div class="empty"><div class="empty-symbol">✳</div><h3>Начнём с вашего события</h3><p>Укажем доступность по календарю,<br>начальную цену и условия работы.</p></div></div>
 <div id="reasons" hidden></div>
 <section id="alternatives" hidden><h3>Можно рассмотреть, если изменить одно условие</h3><p>Эти варианты не входят в основной список. Мы явно показываем, какое условие потребуется изменить.</p><div id="alternative-cards"></div></section>
+<section id="bundle-results" hidden><div id="bundle-summary"></div><div id="bundle-cards"></div><div id="bundle-alternatives"></div></section>
 <details class="method"><summary>Как устроен подбор</summary><p>Сначала проверяем город и категорию, затем дату, бюджет, формат, язык и длительность. Показываем до трёх подходящих профилей по возрастанию начальной цены. При одинаковой цене порядок фиксируется по ID.</p><p>Это первая версия: объяснения составляются из полей каталога, AI-подбор по пожеланиям ещё не подключён. Профили анонимизированы; синтетические записи отмечены отдельно.</p></details>
 </section></div>
 <footer><span>Хорошее событие начинается с правильного выбора.</span><span>Каталог организаторов · 66 профилей</span></footer>

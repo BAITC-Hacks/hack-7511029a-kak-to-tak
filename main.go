@@ -138,7 +138,8 @@ func nearestAvailableDate(c Contractor, selected string) string {
 	if err != nil {
 		return ""
 	}
-	for offset := 1; offset <= 45; offset++ {
+	dateAlternativeAdded := false
+	for offset := 1; offset <= 3 && !dateAlternativeAdded; offset++ {
 		for _, direction := range []int{1, -1} {
 			candidate := start.AddDate(0, 0, offset*direction)
 			formatted := candidate.Format("2006-01-02")
@@ -148,6 +149,39 @@ func nearestAvailableDate(c Contractor, selected string) string {
 		}
 	}
 	return ""
+}
+
+type BundleQuery struct {
+	City, Date, Format, Language string
+	Categories                   []string
+	Budget, Hours                int
+}
+
+type BundleItem struct {
+	Contractor  Contractor `json:"contractor"`
+	Category    string     `json:"category"`
+	Price       int        `json:"price"`
+	Explanation string     `json:"explanation"`
+}
+
+type BundleAlternative struct {
+	Kind       string       `json:"kind"`
+	Date       string       `json:"date,omitempty"`
+	Items      []BundleItem `json:"items"`
+	Total      int          `json:"total"`
+	Difference int          `json:"difference"`
+	Message    string       `json:"message"`
+}
+
+type BundleResult struct {
+	Status              string              `json:"status"`
+	Message             string              `json:"message"`
+	Items               []BundleItem        `json:"items"`
+	Total               int                 `json:"total"`
+	Remaining           int                 `json:"remaining"`
+	RequestedCategories []string            `json:"requested_categories"`
+	MissingCategories   []string            `json:"missing_categories"`
+	Alternatives        []BundleAlternative `json:"alternatives"`
 }
 
 func contains(values []string, value string) bool {
@@ -259,7 +293,7 @@ func recommend(catalog []Contractor, q Query) (Result, error) {
 		}
 		// Alternatives are intentionally separate and relax exactly one business constraint.
 		baseFit := !(!contains(c.Formats, q.Format) || (q.Language != "" && !contains(c.Languages, q.Language)) || (q.Hours > 0 && c.MaxHours != nil && q.Hours > *c.MaxHours))
-		if baseFit && !contains(c.BusyDates, q.Date) && c.Price > q.Budget && c.Price <= q.Budget+max(200000, q.Budget/4) {
+		if baseFit && !contains(c.BusyDates, q.Date) && c.Price > q.Budget && c.Price <= q.Budget+100000 {
 			overBudget = append(overBudget, rankedContractor{c, relevance, evidence})
 		}
 		if baseFit && c.Price <= q.Budget && contains(c.BusyDates, q.Date) {
@@ -337,11 +371,198 @@ func recommend(catalog []Contractor, q Query) (Result, error) {
 	return r, nil
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
+type bundleCandidate struct {
+	contractor Contractor
+	category   string
+	relevance  int
+	evidence   []string
+}
+
+func validateBundleQuery(q BundleQuery) error {
+	if q.City == "" || q.Format == "" || q.Budget <= 0 || q.Hours < 0 || len(q.Categories) == 0 {
+		return fmt.Errorf("город, формат, категории и положительный общий бюджет обязательны")
 	}
-	return b
+	if _, err := time.Parse("2006-01-02", q.Date); err != nil || q.Date < "2026-09-23" || q.Date > "2026-12-31" {
+		return fmt.Errorf("дата должна быть в диапазоне 2026-09-23 — 2026-12-31")
+	}
+	seen := map[string]bool{}
+	for _, category := range q.Categories {
+		if strings.TrimSpace(category) == "" || seen[category] {
+			return fmt.Errorf("категории должны быть непустыми и уникальными")
+		}
+		seen[category] = true
+	}
+	return nil
+}
+
+func bundleCandidates(catalog []Contractor, q BundleQuery, date string) map[string][]bundleCandidate {
+	result := map[string][]bundleCandidate{}
+	for _, category := range q.Categories {
+		for _, c := range catalog {
+			if c.City != q.City || !contains(c.Categories, category) || contains(c.BusyDates, date) || !contains(c.Formats, q.Format) {
+				continue
+			}
+			if q.Language != "" && !contains(c.Languages, q.Language) {
+				continue
+			}
+			if q.Hours > 0 && c.MaxHours != nil && q.Hours > *c.MaxHours {
+				continue
+			}
+			evidence, relevance := matchedEvidence(c.Description, "")
+			result[category] = append(result[category], bundleCandidate{contractor: c, category: category, relevance: relevance, evidence: evidence})
+		}
+		sort.Slice(result[category], func(i, j int) bool {
+			a, b := result[category][i], result[category][j]
+			if a.relevance != b.relevance {
+				return a.relevance > b.relevance
+			}
+			if a.contractor.Price != b.contractor.Price {
+				return a.contractor.Price < b.contractor.Price
+			}
+			return a.contractor.ID < b.contractor.ID
+		})
+		if len(result[category]) > 20 {
+			result[category] = result[category][:20]
+		}
+	}
+	return result
+}
+
+func bundleItems(selected []bundleCandidate, q BundleQuery, date string) []BundleItem {
+	items := make([]BundleItem, 0, len(selected))
+	for _, candidate := range selected {
+		c := candidate.contractor
+		explanation := fmt.Sprintf("Свободен %s, работает с форматом «%s», цена %d ₸ включена в общий бюджет.", date, q.Format, c.Price)
+		if q.Language != "" {
+			explanation += " Указан язык работы: " + q.Language + "."
+		}
+		items = append(items, BundleItem{Contractor: c, Category: candidate.category, Price: c.Price, Explanation: explanation})
+	}
+	return items
+}
+
+func bundleTotal(selected []bundleCandidate) int {
+	total := 0
+	for _, c := range selected {
+		total += c.contractor.Price
+	}
+	return total
+}
+
+func betterBundle(a, b []bundleCandidate, budget int) bool {
+	if len(a) != len(b) {
+		return len(a) > len(b)
+	}
+	ta, tb := bundleTotal(a), bundleTotal(b)
+	aFit, tbFit := ta <= budget, tb <= budget
+	if aFit != tbFit {
+		return aFit
+	}
+	if ta != tb {
+		return ta < tb
+	}
+	for i := range a {
+		if a[i].relevance != b[i].relevance {
+			return a[i].relevance > b[i].relevance
+		}
+		if a[i].contractor.ID != b[i].contractor.ID {
+			return a[i].contractor.ID < b[i].contractor.ID
+		}
+	}
+	return false
+}
+
+func chooseBundle(candidates map[string][]bundleCandidate, categories []string, budget int) []bundleCandidate {
+	var best []bundleCandidate
+	var walk func(int, []bundleCandidate)
+	walk = func(index int, selected []bundleCandidate) {
+		if index == len(categories) {
+			if best == nil || betterBundle(selected, best, budget) {
+				best = append([]bundleCandidate(nil), selected...)
+			}
+			return
+		}
+		category := categories[index]
+		walk(index+1, selected)
+		for _, candidate := range candidates[category] {
+			if bundleTotal(selected)+candidate.contractor.Price <= budget {
+				walk(index+1, append(selected, candidate))
+			}
+		}
+	}
+	walk(0, nil)
+	return best
+}
+
+func cheapestFullBundle(candidates map[string][]bundleCandidate, categories []string) []bundleCandidate {
+	selected := make([]bundleCandidate, 0, len(categories))
+	for _, category := range categories {
+		if len(candidates[category]) == 0 {
+			return nil
+		}
+		selected = append(selected, candidates[category][0])
+	}
+	return selected
+}
+
+func recommendBundle(catalog []Contractor, q BundleQuery) (BundleResult, error) {
+	r := BundleResult{Items: []BundleItem{}, Alternatives: []BundleAlternative{}, RequestedCategories: append([]string(nil), q.Categories...)}
+	if err := validateBundleQuery(q); err != nil {
+		return r, err
+	}
+	candidates := bundleCandidates(catalog, q, q.Date)
+	for _, category := range q.Categories {
+		if len(candidates[category]) == 0 {
+			r.MissingCategories = append(r.MissingCategories, category)
+		}
+	}
+	selected := chooseBundle(candidates, q.Categories, q.Budget)
+	r.Items = bundleItems(selected, q, q.Date)
+	r.Total = bundleTotal(selected)
+	r.Remaining = q.Budget - r.Total
+	if len(selected) == len(q.Categories) {
+		r.Status = "complete"
+		r.Message = fmt.Sprintf("Собран комплект из %d категорий на %d ₸. Остаток бюджета: %d ₸.", len(selected), r.Total, r.Remaining)
+	} else {
+		r.Status = "partial"
+		missing := append([]string(nil), r.MissingCategories...)
+		full := cheapestFullBundle(candidates, q.Categories)
+		if len(full) == len(q.Categories) {
+			fullTotal := bundleTotal(full)
+			r.Message = fmt.Sprintf("В рамках бюджета удалось подобрать %d из %d категорий. Полный комплект из реальных профилей стоит минимум %d ₸.", len(selected), len(q.Categories), fullTotal)
+			if fullTotal > q.Budget && fullTotal-q.Budget <= 100000 {
+				r.Alternatives = append(r.Alternatives, BundleAlternative{Kind: "over_budget", Items: bundleItems(full, q, q.Date), Total: fullTotal, Difference: fullTotal - q.Budget, Message: fmt.Sprintf("Если увеличить общий бюджет на %d ₸, можно собрать полный комплект.", fullTotal-q.Budget)})
+			}
+		} else {
+			r.Message = fmt.Sprintf("В рамках бюджета удалось подобрать %d из %d категорий. Для категорий %s нет доступных профилей на эту дату.", len(selected), len(q.Categories), strings.Join(missing, ", "))
+		}
+	}
+	// A neighboring date is useful only when it produces a strictly fuller or cheaper complete set.
+	dateAlternativeAdded := false
+	for offset := 1; offset <= 3 && !dateAlternativeAdded; offset++ {
+		for _, direction := range []int{1, -1} {
+			candidateDate := qDateOffset(q.Date, offset*direction)
+			if candidateDate == "" || candidateDate < "2026-09-23" || candidateDate > "2026-12-31" {
+				continue
+			}
+			neighbor := bundleCandidates(catalog, q, candidateDate)
+			picked := chooseBundle(neighbor, q.Categories, q.Budget)
+			if len(picked) > len(selected) || (len(picked) == len(selected) && len(picked) == len(q.Categories) && bundleTotal(picked) < r.Total) {
+				r.Alternatives = append(r.Alternatives, BundleAlternative{Kind: "other_date", Date: candidateDate, Items: bundleItems(picked, q, candidateDate), Total: bundleTotal(picked), Difference: bundleTotal(picked) - r.Total, Message: fmt.Sprintf("На %s доступен более полный комплект из %d категорий в рамках бюджета.", candidateDate, len(picked))})
+				dateAlternativeAdded = true
+				break
+			}
+		}
+	}
+	return r, nil
+}
+
+func qDateOffset(date string, days int) string {
+	parsed, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return ""
+	}
+	return parsed.AddDate(0, 0, days).Format("2006-01-02")
 }
 
 func main() {

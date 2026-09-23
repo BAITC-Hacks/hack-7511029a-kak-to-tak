@@ -19,7 +19,18 @@ async function init() {
     for (const [field, list] of Object.entries({city:options.cities, category:options.categories, format:options.formats, language:options.languages})) {
       for (const value of list) document.getElementById(field).add(new Option(value, value));
     }
+    for (const value of options.cities) document.getElementById('bundle-city').add(new Option(value, value));
+    for (const value of options.formats) document.getElementById('bundle-format').add(new Option(value, value));
+    for (const value of options.languages) document.getElementById('bundle-language').add(new Option(value, value));
+    const categoryBox = document.querySelector('#bundle-categories');
+    for (const value of options.categories) {
+      const label = el('label','category-choice');
+      const input = document.createElement('input'); input.type = 'checkbox'; input.name = 'category'; input.value = value;
+      label.append(input, document.createTextNode(value)); categoryBox.append(label);
+    }
     form.elements.city.value = 'Алматы'; form.elements.category.value = 'Ведущий'; form.elements.format.value = 'корпоратив';
+    document.querySelector('#bundle-city').value = 'Алматы'; document.querySelector('#bundle-format').value = 'свадьба';
+    document.querySelectorAll('#bundle-categories input').forEach(input => { input.checked = ['Ведущий','Фотограф','Танцевальный коллектив'].includes(input.value); });
     ready = true; submit.disabled = false;
   } catch (e) { error.hidden = false; error.textContent = e.message; }
 }
@@ -102,3 +113,46 @@ document.querySelectorAll('[data-example]').forEach(button=>button.addEventListe
   form.requestSubmit();
 }));
 init();
+
+const bundleForm = document.querySelector('#bundle-search');
+const bundleResults = document.querySelector('#bundle-results');
+const bundleSummary = document.querySelector('#bundle-summary');
+const bundleCards = document.querySelector('#bundle-cards');
+const bundleAlternatives = document.querySelector('#bundle-alternatives');
+
+document.querySelectorAll('.mode').forEach(button => button.addEventListener('click', () => {
+  const bundle = button.dataset.mode === 'bundle';
+  document.querySelectorAll('.mode').forEach(item => item.classList.toggle('active', item === button));
+  form.hidden = bundle; bundleForm.hidden = !bundle; bundleResults.hidden = !bundle;
+  document.querySelector('#cards').hidden = bundle; document.querySelector('.examples').hidden = bundle;
+  if (bundle) { reasons.hidden = true; alternatives.hidden = true; }
+  if (bundle) { document.querySelector('#result-title').textContent = 'Ваш комплект'; document.querySelector('#summary').textContent = 'Выберите категории и общий бюджет — соберём комплект из каталога.'; }
+  else { document.querySelector('#result-title').textContent = 'Ваш короткий список'; }
+}));
+
+function renderBundleItem(item) {
+  const article = el('article','card');
+  const top = el('div','card-top'); top.append(el('div','avatar', item.contractor.name.split(' ').slice(0,2).map(w=>w[0]).join('')));
+  const identity = el('div','identity'); identity.append(el('h3','',item.contractor.name),el('div','meta',item.category+' · '+item.contractor.city));
+  top.append(identity,el('div','price',`от ${money(item.price)} ₸`)); article.append(top);
+  article.append(el('div','explanation',item.explanation)); return article;
+}
+
+bundleForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const categories = [...bundleForm.querySelectorAll('input[name="category"]:checked')].map(input => input.value);
+  if (!categories.length) { bundleSummary.textContent = 'Выберите хотя бы одну категорию.'; return; }
+  const query = Object.fromEntries(new FormData(bundleForm)); delete query.category;
+  const params = new URLSearchParams(query); categories.forEach(category => params.append('category', category));
+  bundleSummary.textContent = 'Собираем комплект из реальных профилей…'; bundleCards.replaceChildren(); bundleAlternatives.replaceChildren();
+  try {
+    const response = await fetch('/api/bundle?'+params); const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Не удалось собрать мероприятие.');
+    bundleSummary.textContent = result.message + ` Итог: ${money(result.total)} ₸.`;
+    bundleCards.replaceChildren(...result.items.map(renderBundleItem));
+    if (result.alternatives?.length) {
+      const heading = el('h3','', 'Почти идеальные варианты'); bundleAlternatives.append(heading);
+      result.alternatives.forEach(alternative => { const box = el('article','alternative'); box.append(el('h4','',alternative.kind === 'other_date' ? 'Если готовы изменить дату' : 'Если готовы немного увеличить бюджет'),el('p','',alternative.message),el('p','',`Итог комплекта: ${money(alternative.total)} ₸`)); bundleAlternatives.append(box); });
+    }
+  } catch (e) { bundleSummary.textContent = e.message; }
+});
