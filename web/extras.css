@@ -1,0 +1,46 @@
+textarea {
+  height: auto;
+  padding: 10px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+textarea:focus {
+  outline: 3px solid #a8c774;
+  outline-offset: 2px;
+}
+
+.field-note {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+#alternatives {
+  border-top: 1px solid var(--line);
+  margin-top: 28px;
+  padding-top: 22px;
+}
+
+#alternatives h3 { font-size: 17px; margin: 0 0 7px; }
+#alternatives > p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+.alternative {
+  background: #fffdf6;
+  border: 1px solid #e7ddba;
+  border-radius: 12px;
+  margin-top: 12px;
+  padding: 16px;
+}
+
+.alternative h4 { font-size: 16px; margin: 0; }
+.alternative p { font-size: 12px; line-height: 1.6; margin: 9px 0; }
+.alternative button {
+  background: #f1f5e4;
+  border: 1px solid #9caf70;
+  border-radius: 7px;
+  color: #375440;
+  font-size: 12px;
+  padding: 8px 10px;
+}

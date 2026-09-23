@@ -60,3 +60,24 @@ func TestRecommendationConstraints(t *testing.T) {
 		t.Fatal("unknown calendar accepted")
 	}
 }
+
+func TestWishRanksAndOffersAlternatives(t *testing.T) {
+	q := Query{City: "Алматы", Category: "Ведущий", Format: "корпоратив", Date: "2026-10-15", Budget: 500000, Wish: "спокойный интеллигентный ведущий"}
+	base := Contractor{ID: "plain", Name: "Обычный", City: q.City, Categories: []string{q.Category}, Formats: []string{q.Format}, Price: 300000, Description: "Проводит мероприятия."}
+	meaningful := base
+	meaningful.ID, meaningful.Name, meaningful.Description = "meaningful", "Спокойный", "Интеллигентный ведущий создаёт комфортную атмосферу для гостей."
+	busy := meaningful
+	busy.ID, busy.Name, busy.BusyDates = "busy", "Занят", []string{q.Date}
+	over := meaningful
+	over.ID, over.Name, over.Price = "over", "Дороже", 600000
+	r, err := recommend([]Contractor{base, meaningful, busy, over}, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Cards[0].Contractor.ID != "meaningful" || len(r.Cards[0].Evidence) == 0 {
+		t.Fatalf("wish was not ranked: %+v", r.Cards)
+	}
+	if len(r.Alternatives) != 2 {
+		t.Fatalf("alternatives: %+v", r.Alternatives)
+	}
+}
